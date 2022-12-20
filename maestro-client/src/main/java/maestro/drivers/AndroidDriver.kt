@@ -143,17 +143,21 @@ class AndroidDriver(
             resetProxy()
         }
 
-        PORT_TO_FORWARDER[hostPort]?.close()
+//        PORT_TO_FORWARDER[hostPort]?.close()
+
         PORT_TO_FORWARDER.remove(hostPort)
         PORT_TO_ALLOCATION_POINT.remove(hostPort)
         uninstallMaestroApks()
+
         instrumentationSession?.close()
+
         instrumentationSession = null
+
         channel.shutdown()
 
-        if (!channel.awaitTermination(5, TimeUnit.SECONDS)) {
-            throw TimeoutException("Couldn't close Maestro Android driver due to gRPC timeout")
-        }
+//        if (!channel.awaitTermination(5, TimeUnit.SECONDS)) {
+//            throw TimeoutException("Couldn't close Maestro Android driver due to gRPC timeout")
+//        }
     }
 
     override fun deviceInfo(): DeviceInfo {
@@ -726,6 +730,11 @@ class AndroidDriver(
     }
 
     private fun installMaestroApks() {
+        if (isPackageInstalled("dev.mobile.maestro.test")
+            && isPackageInstalled("dev.mobile.maestro")) {
+            return
+        }
+
         val maestroAppApk = File.createTempFile("maestro-app", ".apk")
         val maestroServerApk = File.createTempFile("maestro-server", ".apk")
         Maestro::class.java.getResourceAsStream("/maestro-app.apk")?.let {
@@ -746,6 +755,13 @@ class AndroidDriver(
     }
 
     private fun uninstallMaestroApks() {
+        ProcessBuilder(*"adb shell am force-stop dev.mobile.maestro".split(" ").toTypedArray())
+            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .redirectError(ProcessBuilder.Redirect.INHERIT)
+            .start()
+            .waitFor(60, TimeUnit.MINUTES)
+
+        return
         if (isPackageInstalled("dev.mobile.maestro.test")) {
             uninstall("dev.mobile.maestro.test")
         }
