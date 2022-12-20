@@ -58,7 +58,7 @@ dependencies {
     api(libs.grpc.okhttp)
     api(libs.google.protobuf.kotlin)
     api(libs.kotlin.result)
-    api(libs.dadb)
+    api project(':dadb:dadb')
     api(libs.square.okio)
     api(libs.image.comparison)
     api(libs.android.tools.sdk)

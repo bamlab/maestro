@@ -16,6 +16,8 @@ dependencyResolutionManagement {
 }
 
 include("maestro-utils")
+apply("dadb/settings.gradle.kts")
+include("dadb:dadb")
 include("maestro-android")
 include("maestro-cli")
 include("maestro-client")
