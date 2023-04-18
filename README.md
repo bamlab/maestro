@@ -13,5 +13,5 @@
 ./gradlew distZip && unzip -o maestro-cli/build/distributions/maestro.zip -d dist
 # Publish
 cd dist/maestro
-npm publish
+npm publish --tag rc
 ```

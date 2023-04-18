@@ -1,6 +1,6 @@
 {
   "name": "@perf-profiler/maestro",
-  "version": "0.0.1-rc.3",
+  "version": "0.0.1-rc.9",
   "description": "",
   "bin": "bin/maestro",
   "keywords": [],
