@@ -23,6 +23,7 @@ import maestro.KeyCode
 import maestro.Point
 import maestro.ScrollDirection
 import maestro.SwipeDirection
+import maestro.TapRepeat
 import maestro.js.JsEngine
 import maestro.orchestra.util.Env.evaluateScripts
 import maestro.orchestra.util.InputRandomTextHelper
@@ -40,7 +41,7 @@ sealed interface Command {
 sealed interface CompositeCommand : Command {
 
     fun subCommands(): List<MaestroCommand>
-
+    fun config(): MaestroConfig?
 }
 
 data class SwipeCommand(
@@ -220,16 +221,21 @@ data class TapOnElementCommand(
     val retryIfNoChange: Boolean? = null,
     val waitUntilVisible: Boolean? = null,
     val longPress: Boolean? = null,
+    val repeat: TapRepeat? = null
 ) : Command {
 
     override fun description(): String {
-        return "${tapOrLong(longPress)} on ${selector.description()}"
+        return "${tapOnDescription(longPress, repeat)} on ${selector.description()}"
     }
 
     override fun evaluateScripts(jsEngine: JsEngine): TapOnElementCommand {
         return copy(
             selector = selector.evaluateScripts(jsEngine),
         )
+    }
+
+    companion object {
+        const val DEFAULT_REPEAT_DELAY = 100L
     }
 }
 
@@ -240,10 +246,11 @@ data class TapOnPointCommand(
     val retryIfNoChange: Boolean? = null,
     val waitUntilVisible: Boolean? = null,
     val longPress: Boolean? = null,
+    val repeat: TapRepeat? = null
 ) : Command {
 
     override fun description(): String {
-        return "${tapOrLong(longPress)} on point ($x, $y)"
+        return "${tapOnDescription(longPress, repeat)} on point ($x, $y)"
     }
 
     override fun evaluateScripts(jsEngine: JsEngine): TapOnPointCommand {
@@ -255,10 +262,11 @@ data class TapOnPointV2Command(
     val point: String,
     val retryIfNoChange: Boolean? = null,
     val longPress: Boolean? = null,
+    val repeat: TapRepeat? = null
 ) : Command {
 
     override fun description(): String {
-        return "${tapOrLong(longPress)} on point ($point)"
+        return "${tapOnDescription(longPress, repeat)} on point ($point)"
     }
 
     override fun evaluateScripts(jsEngine: JsEngine): TapOnPointV2Command {
@@ -555,10 +563,15 @@ data class RunFlowCommand(
     val commands: List<MaestroCommand>,
     val condition: Condition? = null,
     val sourceDescription: String? = null,
+    val config: MaestroConfig?,
 ) : CompositeCommand {
 
     override fun subCommands(): List<MaestroCommand> {
         return commands
+    }
+
+    override fun config(): MaestroConfig? {
+        return config
     }
 
     override fun description(): String {
@@ -578,6 +591,7 @@ data class RunFlowCommand(
     override fun evaluateScripts(jsEngine: JsEngine): Command {
         return copy(
             condition = condition?.evaluateScripts(jsEngine),
+            config = config?.evaluateScripts(jsEngine),
         )
     }
 
@@ -605,6 +619,10 @@ data class RepeatCommand(
 
     override fun subCommands(): List<MaestroCommand> {
         return commands
+    }
+
+    override fun config(): MaestroConfig? {
+        return null
     }
 
     override fun description(): String {
@@ -702,22 +720,6 @@ data class EvalScriptCommand(
 
 }
 
-data class MockNetworkCommand(
-    val path: String,
-) : Command {
-
-    override fun description(): String {
-        return "Mock network using $path"
-    }
-
-    override fun evaluateScripts(jsEngine: JsEngine): Command {
-        return copy(
-            path = path.evaluateScripts(jsEngine),
-        )
-    }
-
-}
-
 data class TravelCommand(
     val points: List<GeoPoint>,
     val speedMPS: Double? = null,
@@ -755,15 +757,23 @@ data class TravelCommand(
 
 }
 
-data class AssertOutgoingRequestsCommand(
-    val path: String? = null,
-    val headersPresent: List<String> = emptyList(),
-    val headersAndValues: Map<String, String> = emptyMap(),
-    val httpMethodIs: String? = null,
-    val requestBodyContains: String? = null,
-) : Command {
+data class StartRecordingCommand(val path: String) : Command {
+
     override fun description(): String {
-        return "Assert outgoing requests to $path"
+        return "Start recording $path"
+    }
+
+    override fun evaluateScripts(jsEngine: JsEngine): StartRecordingCommand {
+        return copy(
+            path = path.evaluateScripts(jsEngine),
+        )
+    }
+}
+
+class StopRecordingCommand : Command {
+
+    override fun description(): String {
+        return "Stop recording"
     }
 
     override fun evaluateScripts(jsEngine: JsEngine): Command {
@@ -771,6 +781,13 @@ data class AssertOutgoingRequestsCommand(
     }
 }
 
-internal fun tapOrLong(isLongPress: Boolean?): String = if (isLongPress == true) "Long press" else "Tap"
-
-
+internal fun tapOnDescription(isLongPress: Boolean?, repeat: TapRepeat?): String {
+    return if (isLongPress == true) "Long press"
+    else if (repeat != null) {
+        when (repeat.repeat) {
+            1 -> "Tap"
+            2 -> "Double tap"
+            else -> "Tap x${repeat.repeat}"
+        }
+    } else "Tap"
+}

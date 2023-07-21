@@ -1,4 +1,5 @@
 import FlyingFox
+import Foundation
 
 enum Route: String, CaseIterable {
     case subTree
@@ -14,6 +15,7 @@ enum Route: String, CaseIterable {
     case eraseText
     case deviceInfo
     case setPermissions
+    case viewHierarchy
     
     func toHTTPRoute() -> HTTPRoute {
         return HTTPRoute(rawValue)
@@ -22,7 +24,8 @@ enum Route: String, CaseIterable {
 
 struct XCTestHTTPServer {
     func start() async throws {
-        let server = HTTPServer(address: .loopback(port: 22087))
+        let port = ProcessInfo.processInfo.environment["PORT"]?.toUInt16()
+        let server = HTTPServer(address: .loopback(port: port ?? 22087), timeout: 100)
         
         for route in Route.allCases {
             let handler = await RouteHandlerFactory.createRouteHandler(route: route)

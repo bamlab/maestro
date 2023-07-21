@@ -22,6 +22,9 @@ import maestro.orchestra.yaml.YamlCommandReader
 import okio.Sink
 import org.slf4j.LoggerFactory
 import java.io.File
+import kotlin.math.roundToLong
+import kotlin.system.measureTimeMillis
+import kotlin.time.Duration.Companion.seconds
 
 class TestSuiteInteractor(
     private val maestro: Maestro,
@@ -40,25 +43,25 @@ class TestSuiteInteractor(
     ): TestExecutionSummary {
         return if (input.isFile) {
             runTestSuite(
-                listOf(input),
+                WorkspaceExecutionPlanner.ExecutionPlan(flowsToRun = listOf(input.toPath())),
                 reportOut,
                 env,
             )
         } else {
-            val flowFiles = WorkspaceExecutionPlanner
+            val plan = WorkspaceExecutionPlanner
                 .plan(
                     input = input.toPath().toAbsolutePath(),
                     includeTags = includeTags,
                     excludeTags = excludeTags,
                 )
-                .flowsToRun
+            val flowFiles = plan.flowsToRun
 
-            if (flowFiles.isEmpty()) {
-                throw CliError("No flow returned from the tag filter used")
+            if (flowFiles.isEmpty() && plan.sequence?.flows?.isEmpty() == true) {
+                throw CliError("No flows returned from the tag filter used")
             }
 
             runTestSuite(
-                flowFiles.map { it.toFile() },
+                plan,
                 reportOut,
                 env,
             )
@@ -66,7 +69,7 @@ class TestSuiteInteractor(
     }
 
     private fun runTestSuite(
-        flows: List<File>,
+        executionPlan: WorkspaceExecutionPlanner.ExecutionPlan,
         reportOut: Sink?,
         env: Map<String, String>,
     ): TestExecutionSummary {
@@ -76,27 +79,46 @@ class TestSuiteInteractor(
         println()
 
         var passed = true
-        flows.forEach { flowFile ->
-            val result = runFlow(flowFile, env, maestro)
+
+        // first run sequence of flows if present
+        val flowSequence = executionPlan.sequence
+        for (flow in flowSequence?.flows ?: emptyList()) {
+            val result = runFlow(flow.toFile(), env, maestro)
+            flowResults.add(result)
+
+            if (result.status == FlowStatus.ERROR) {
+                passed = false
+                if (executionPlan.sequence?.continueOnFailure != true) {
+                    PrintUtils.message("Flow ${result.name} failed and continueOnFailure is set to false, aborting running sequential Flows")
+                    println()
+                    break
+                }
+            }
+        }
+
+        // proceed to run all other Flows
+        executionPlan.flowsToRun.forEach { flow ->
+            val result = runFlow(flow.toFile(), env, maestro)
 
             if (result.status == FlowStatus.ERROR) {
                 passed = false
             }
-
-            // TODO accumulate extra information
-            // - Command statuses
-            // - View hierarchies
             flowResults.add(result)
         }
+
+
+        val suiteDuration = flowResults.sumOf { it.duration?.inWholeSeconds ?: 0 }.seconds
 
         TestSuiteStatusView.showSuiteResult(
             TestSuiteViewModel(
                 status = if (passed) FlowStatus.SUCCESS else FlowStatus.ERROR,
+                duration = suiteDuration,
                 flows = flowResults
                     .map {
                         TestSuiteViewModel.FlowResult(
                             name = it.name,
                             status = it.status,
+                            duration = it.duration,
                         )
                     },
             )
@@ -108,7 +130,8 @@ class TestSuiteInteractor(
             suites = listOf(
                 TestExecutionSummary.SuiteResult(
                     passed = passed,
-                    flows = flowResults
+                    flows = flowResults,
+                    duration = suiteDuration
                 )
             )
         )
@@ -162,65 +185,68 @@ class TestSuiteInteractor(
             return result.getOrNull()
         }
 
-        try {
-            val commands = YamlCommandReader.readCommands(flowFile.toPath())
-                .withEnv(env)
+        val flowTimeMillis = measureTimeMillis {
+            try {
+                val commands = YamlCommandReader.readCommands(flowFile.toPath())
+                    .withEnv(env)
 
-            val config = YamlCommandReader.getConfig(commands)
+                val config = YamlCommandReader.getConfig(commands)
 
-            val orchestra = Orchestra(
-                maestro = maestro,
-                onCommandStart = { _, command ->
-                    logger.info("${command.description()} RUNNING")
-                    debugCommands[command] = CommandDebugMetadata(
-                        timestamp = System.currentTimeMillis(),
-                        status = CommandStatus.RUNNING
-                    )
-                },
-                onCommandComplete = { _, command ->
-                    logger.info("${command.description()} COMPLETED")
-                    debugCommands[command]?.let {
-                        it.status = CommandStatus.COMPLETED
-                        it.calculateDuration()
-                    }
-                },
-                onCommandFailed = { _, command, e ->
-                    logger.info("${command.description()} FAILED")
-                    if (e is MaestroException) debug.exception = e
-                    debugCommands[command]?.let {
-                        it.status = CommandStatus.FAILED
-                        it.calculateDuration()
-                        it.error = e
-                    }
+                val orchestra = Orchestra(
+                    maestro = maestro,
+                    onCommandStart = { _, command ->
+                        logger.info("${command.description()} RUNNING")
+                        debugCommands[command] = CommandDebugMetadata(
+                            timestamp = System.currentTimeMillis(),
+                            status = CommandStatus.RUNNING
+                        )
+                    },
+                    onCommandComplete = { _, command ->
+                        logger.info("${command.description()} COMPLETED")
+                        debugCommands[command]?.let {
+                            it.status = CommandStatus.COMPLETED
+                            it.calculateDuration()
+                        }
+                    },
+                    onCommandFailed = { _, command, e ->
+                        logger.info("${command.description()} FAILED")
+                        if (e is MaestroException) debug.exception = e
+                        debugCommands[command]?.let {
+                            it.status = CommandStatus.FAILED
+                            it.calculateDuration()
+                            it.error = e
+                        }
 
-                    takeDebugScreenshot(CommandStatus.FAILED)
-                    Orchestra.ErrorResolution.FAIL
-                },
-                onCommandSkipped = { _, command ->
-                    logger.info("${command.description()} SKIPPED")
-                    debugCommands[command]?.let {
-                        it.status = CommandStatus.SKIPPED
-                    }
-                },
-                onCommandReset = { command ->
-                    logger.info("${command.description()} PENDING")
-                    debugCommands[command]?.let {
-                        it.status = CommandStatus.PENDING
-                    }
-                },
-            )
+                        takeDebugScreenshot(CommandStatus.FAILED)
+                        Orchestra.ErrorResolution.FAIL
+                    },
+                    onCommandSkipped = { _, command ->
+                        logger.info("${command.description()} SKIPPED")
+                        debugCommands[command]?.let {
+                            it.status = CommandStatus.SKIPPED
+                        }
+                    },
+                    onCommandReset = { command ->
+                        logger.info("${command.description()} PENDING")
+                        debugCommands[command]?.let {
+                            it.status = CommandStatus.PENDING
+                        }
+                    },
+                )
 
-            config?.name?.let {
-                flowName = it
+                config?.name?.let {
+                    flowName = it
+                }
+
+                val flowSuccess = orchestra.runFlow(commands)
+                flowStatus = if (flowSuccess) FlowStatus.SUCCESS else FlowStatus.ERROR
+            } catch (e: Exception) {
+                logger.error("Failed to complete flow", e)
+                flowStatus = FlowStatus.ERROR
+                errorMessage = ErrorViewUtils.exceptionToMessage(e)
             }
-
-            val flowSuccess = orchestra.runFlow(commands)
-            flowStatus = if (flowSuccess) FlowStatus.SUCCESS else FlowStatus.ERROR
-        } catch (e: Exception) {
-            logger.error("Failed to complete flow", e)
-            flowStatus = FlowStatus.ERROR
-            errorMessage = ErrorViewUtils.exceptionToMessage(e)
         }
+        val flowDuration = (flowTimeMillis / 1000f).roundToLong().seconds
 
         TestDebugReporter.saveFlow(flowName, debug)
 
@@ -228,7 +254,8 @@ class TestSuiteInteractor(
             TestSuiteViewModel.FlowResult(
                 name = flowName,
                 status = flowStatus,
-                error = debug.exception?.message
+                duration = flowDuration,
+                error = debug.exception?.message,
             )
         )
 
@@ -241,6 +268,7 @@ class TestSuiteInteractor(
                     message = errorMessage ?: debug.exception?.message ?: "Unknown error",
                 )
             } else null,
+            duration = flowDuration,
         )
     }
 

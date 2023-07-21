@@ -4,9 +4,11 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import maestro.utils.MaestroTimer
 import net.harawata.appdirs.AppDirsFactory
 import java.io.File
+import java.nio.file.Files
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
+import kotlin.io.path.absolutePathString
 
 object XCRunnerCLIUtils {
 
@@ -126,8 +128,9 @@ object XCRunnerCLIUtils {
         return runningApps(deviceId)[bundleId]
     }
 
-    fun runXcTestWithoutBuild(deviceId: String, xcTestRunFilePath: String): Process {
+    fun runXcTestWithoutBuild(deviceId: String, xcTestRunFilePath: String, port: Int): Process {
         val date = dateFormatter.format(LocalDateTime.now())
+        val logOutputDir = Files.createTempDirectory("maestro_xctestrunner_xcodebuild_output")
         return CommandLineUtils.runCommand(
             listOf(
                 "xcodebuild",
@@ -136,9 +139,12 @@ object XCRunnerCLIUtils {
                 xcTestRunFilePath,
                 "-destination",
                 "id=$deviceId",
+                "-derivedDataPath",
+                logOutputDir.absolutePathString()
             ),
             waitForCompletion = false,
-            outputFile = File(logDirectory, "xctest_runner_$date.log")
+            outputFile = File(logDirectory, "xctest_runner_$date.log"),
+            params = mapOf("TEST_RUNNER_PORT" to port.toString())
         )
     }
 }

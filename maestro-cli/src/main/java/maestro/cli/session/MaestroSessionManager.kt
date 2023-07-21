@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory
 import sun.misc.Signal
 import sun.misc.SignalHandler
 import util.XCRunnerCLIUtils
+import xcuitest.XCTestClient
 import xcuitest.XCTestDriverClient
 import xcuitest.installer.LocalXCTestInstaller
 import java.util.UUID
@@ -164,6 +165,7 @@ object MaestroSessionManager {
                 },
                 device = selectedDevice.device,
             )
+
             selectedDevice.platform == Platform.ANDROID -> MaestroSession(
                 maestro = pickAndroidDevice(
                     selectedDevice.host,
@@ -172,6 +174,7 @@ object MaestroSessionManager {
                 ),
                 device = null,
             )
+
             selectedDevice.platform == Platform.IOS -> MaestroSession(
                 maestro = pickIOSDevice(
                     selectedDevice.host,
@@ -181,10 +184,12 @@ object MaestroSessionManager {
                 ),
                 device = null,
             )
+
             selectedDevice.platform == Platform.WEB -> MaestroSession(
                 maestro = pickWebDevice(isStudio),
                 device = null
             )
+
             else -> error("Unable to create Maestro session")
         }
     }
@@ -291,13 +296,14 @@ object MaestroSessionManager {
         val xcTestInstaller = LocalXCTestInstaller(
             logger = IOSDriverLogger(LocalXCTestInstaller::class.java),
             deviceId = deviceId,
+            host = defaultHost,
+            defaultPort = defaultXcTestPort
         )
 
         val xcTestDriverClient = XCTestDriverClient(
-            host = defaultHost,
-            port = defaultXcTestPort,
             installer = xcTestInstaller,
             logger = IOSDriverLogger(XCTestDriverClient::class.java),
+            client = XCTestClient(defaultHost, defaultXcTestPort)
         )
 
         val xcTestDevice = XCTestIOSDevice(
@@ -346,7 +352,6 @@ object MaestroSessionManager {
         fun close() {
             maestro.close()
         }
-
     }
 
     private class CustomSignalHandler() : SignalHandler {
