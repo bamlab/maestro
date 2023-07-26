@@ -36,7 +36,7 @@ dependencies {
     implementation(project(":maestro-ios"))
     implementation(project(":maestro-ios-driver"))
     implementation(project(":maestro-studio:server"))
-    api project(':dadb:dadb')
+    api(project(":dadb:dadb"))
     implementation(libs.picocli)
     implementation(libs.jackson.core.databind)
     implementation(libs.jackson.module.kotlin)
