@@ -57,10 +57,10 @@ data class MaestroCommand(
     val runScriptCommand: RunScriptCommand? = null,
     val waitForAnimationToEndCommand: WaitForAnimationToEndCommand? = null,
     val evalScriptCommand: EvalScriptCommand? = null,
-    val mockNetworkCommand: MockNetworkCommand? = null,
     val scrollUntilVisible: ScrollUntilVisibleCommand? = null,
     val travelCommand: TravelCommand? = null,
-    val assertOutgoingRequestsCommand: AssertOutgoingRequestsCommand? = null,
+    val startRecordingCommand: StartRecordingCommand? = null,
+    val stopRecordingCommand: StopRecordingCommand? = null,
 ) {
 
     constructor(command: Command) : this(
@@ -93,10 +93,10 @@ data class MaestroCommand(
         runScriptCommand = command as? RunScriptCommand,
         waitForAnimationToEndCommand = command as? WaitForAnimationToEndCommand,
         evalScriptCommand = command as? EvalScriptCommand,
-        mockNetworkCommand = command as? MockNetworkCommand,
         scrollUntilVisible = command as? ScrollUntilVisibleCommand,
         travelCommand = command as? TravelCommand,
-        assertOutgoingRequestsCommand = command as? AssertOutgoingRequestsCommand,
+        startRecordingCommand = command as? StartRecordingCommand,
+        stopRecordingCommand = command as? StopRecordingCommand,
     )
 
     fun asCommand(): Command? = when {
@@ -129,10 +129,10 @@ data class MaestroCommand(
         runScriptCommand != null -> runScriptCommand
         waitForAnimationToEndCommand != null -> waitForAnimationToEndCommand
         evalScriptCommand != null -> evalScriptCommand
-        mockNetworkCommand != null -> mockNetworkCommand
         scrollUntilVisible != null -> scrollUntilVisible
         travelCommand != null -> travelCommand
-        assertOutgoingRequestsCommand != null -> assertOutgoingRequestsCommand
+        startRecordingCommand != null -> startRecordingCommand
+        stopRecordingCommand != null -> stopRecordingCommand
         else -> null
     }
 
