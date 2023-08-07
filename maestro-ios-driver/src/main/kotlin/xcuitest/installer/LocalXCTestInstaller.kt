@@ -61,6 +61,14 @@ class LocalXCTestInstaller(
     }
 
     override fun start(): XCTestClient? {
+        if(XCTestInstaller.shouldUseAlreadyInstalledDriver) {
+            repeat(3) {
+                if (ensureOpen()) {
+                    return XCTestClient(host, port)
+                }
+            }
+            throw IllegalStateException("Driver is not installed, run initDriver or don't use --skipDriverSetup")
+        }
         if (useXcodeTestRunner) {
             repeat(20) {
                 if (ensureOpen()) {

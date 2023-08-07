@@ -37,6 +37,7 @@ import okio.buffer
 import okio.sink
 import picocli.CommandLine
 import picocli.CommandLine.Option
+import xcuitest.installer.XCTestInstaller
 import java.io.File
 import java.util.concurrent.Callable
 import kotlin.io.path.absolutePathString
@@ -93,6 +94,12 @@ class TestCommand : Callable<Int> {
     )
     private var excludeTags: List<String> = emptyList()
 
+    @Option(
+        names = ["--skipDriverSetup"],
+        description = ["Prevent the install and uninstall of the maestro driver"]
+    )
+    private var skipDriverSetup = false
+
     @CommandLine.Spec
     lateinit var commandSpec: CommandLine.Model.CommandSpec
 
@@ -122,6 +129,9 @@ class TestCommand : Callable<Int> {
             else parent?.deviceId
 
         env = env.withInjectedShellEnvVars()
+
+        XCTestInstaller.shouldUseAlreadyInstalledDriver = skipDriverSetup
+        XCTestInstaller.shouldKeepDriver = skipDriverSetup
         
         return MaestroSessionManager.newSession(parent?.host, parent?.port, deviceId) { session ->
             val maestro = session.maestro

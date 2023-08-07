@@ -11,5 +11,6 @@ interface XCTestInstaller: AutoCloseable {
 
     companion object {
         var shouldKeepDriver: Boolean = false
+        var shouldUseAlreadyInstalledDriver: Boolean = false
     }
 }
