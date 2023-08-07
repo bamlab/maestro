@@ -34,7 +34,7 @@ class LocalXCTestInstaller(
     private val port = defaultPort ?: SocketUtils.nextFreePort(9800, 9900)
 
     override fun uninstall() {
-        if (useXcodeTestRunner) {
+        if (useXcodeTestRunner || XCTestInstaller.shouldKeepDriver) {
             return
         }
 
@@ -61,6 +61,14 @@ class LocalXCTestInstaller(
     }
 
     override fun start(): XCTestClient? {
+        if(XCTestInstaller.shouldUseAlreadyInstalledDriver) {
+            repeat(3) {
+                if (ensureOpen()) {
+                    return XCTestClient(host, port)
+                }
+            }
+            throw IllegalStateException("Driver is not installed, run initDriver or don't use --skipDriverSetup")
+        }
         if (useXcodeTestRunner) {
             repeat(20) {
                 if (ensureOpen()) {
