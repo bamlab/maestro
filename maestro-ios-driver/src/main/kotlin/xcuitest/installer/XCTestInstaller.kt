@@ -8,4 +8,8 @@ interface XCTestInstaller: AutoCloseable {
     fun uninstall()
 
     fun isChannelAlive(): Boolean
+
+    companion object {
+        var shouldKeepDriver: Boolean = false
+    }
 }

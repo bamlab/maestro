@@ -19,17 +19,7 @@
 
 package maestro.cli
 
-import maestro.cli.command.BugReportCommand
-import maestro.cli.command.CloudCommand
-import maestro.cli.command.DownloadSamplesCommand
-import maestro.cli.command.LoginCommand
-import maestro.cli.command.LogoutCommand
-import maestro.cli.command.PrintHierarchyCommand
-import maestro.cli.command.QueryCommand
-import maestro.cli.command.RecordCommand
-import maestro.cli.command.StudioCommand
-import maestro.cli.command.TestCommand
-import maestro.cli.command.UploadCommand
+import maestro.cli.command.*
 import maestro.cli.report.TestDebugReporter
 import maestro.cli.update.Updates
 import maestro.cli.util.ErrorReporter
@@ -58,6 +48,7 @@ import kotlin.system.exitProcess
         LogoutCommand::class,
         BugReportCommand::class,
         StudioCommand::class,
+        InitDriverCommand::class,
     ]
 )
 class App {

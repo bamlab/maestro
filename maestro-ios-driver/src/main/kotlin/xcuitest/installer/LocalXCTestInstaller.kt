@@ -34,7 +34,7 @@ class LocalXCTestInstaller(
     private val port = defaultPort ?: SocketUtils.nextFreePort(9800, 9900)
 
     override fun uninstall() {
-        if (useXcodeTestRunner) {
+        if (useXcodeTestRunner || XCTestInstaller.shouldKeepDriver) {
             return
         }
 
