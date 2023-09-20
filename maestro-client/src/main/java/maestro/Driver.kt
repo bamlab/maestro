@@ -45,10 +45,6 @@ interface Driver {
 
     fun clearKeychain()
 
-    fun pullAppState(appId: String, outFile: File)
-
-    fun pushAppState(appId: String, stateFile: File)
-
     fun tap(point: Point)
 
     fun longPress(point: Point)
@@ -96,4 +92,6 @@ interface Driver {
     fun capabilities(): List<Capability>
 
     fun setPermissions(appId: String, permissions: Map<String, String>)
+
+    fun addMedia(mediaFiles: List<File>)
 }

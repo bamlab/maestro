@@ -3,6 +3,7 @@ package maestro.cli.command
 import maestro.cli.App
 import maestro.cli.CliError
 import maestro.cli.DisableAnsiMixin
+import maestro.cli.report.TestDebugReporter
 import maestro.cli.session.MaestroSessionManager
 import maestro.cli.view.blue
 import maestro.cli.view.bold
@@ -28,10 +29,24 @@ class StudioCommand : Callable<Int> {
     @CommandLine.ParentCommand
     private val parent: App? = null
 
+    @CommandLine.Option(
+        names = ["--debug-output"],
+        description = ["Configures the debug output in this path, instead of default"]
+    )
+    private var debugOutput: String? = null
+
+    @CommandLine.Option(
+        names = ["--no-window"],
+        description = ["When set, a browser window will not be automatically opened"]
+    )
+    private var noWindow: Boolean? = null
+
     override fun call(): Int {
         if (parent?.platform != null) {
             throw CliError("--platform option was deprecated. You can remove it to run your test.")
         }
+
+        TestDebugReporter.install(debugOutputPathAsString = debugOutput)
 
         MaestroSessionManager.newSession(parent?.host, parent?.port, parent?.deviceId, true) { session ->
             val port = getFreePort()
@@ -51,12 +66,14 @@ class StudioCommand : Callable<Int> {
 
             Thread.currentThread().join()
         }
+
+        TestDebugReporter.deleteOldFiles()
         return 0
     }
 
     private fun tryOpenUrl(studioUrl: String) {
         try {
-            if (Desktop.isDesktopSupported()) {
+            if (Desktop.isDesktopSupported() && noWindow != true) {
                 Desktop.getDesktop().browse(URI(studioUrl))
             }
         } catch (ignore: Exception) {

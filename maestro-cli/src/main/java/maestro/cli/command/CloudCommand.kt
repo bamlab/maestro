@@ -31,6 +31,7 @@ import picocli.CommandLine
 import picocli.CommandLine.Option
 import java.io.File
 import java.util.concurrent.Callable
+import java.util.concurrent.TimeUnit
 
 @CommandLine.Command(
     name = "cloud",
@@ -98,8 +99,7 @@ class CloudCommand : Callable<Int> {
         names = ["--include-tags"],
         description = ["List of tags that will remove the Flows that does not have the provided tags"],
         split = ",",
-
-        )
+    )
     private var includeTags: List<String> = emptyList()
 
     @Option(
@@ -139,6 +139,15 @@ class CloudCommand : Callable<Int> {
     @Option(hidden = true, names = ["--fail-on-cancellation"], description = ["Fail the command if the upload is marked as cancelled"])
     private var failOnCancellation: Boolean = false
 
+    @Option(hidden = true, names = ["--fail-on-timeout"], description = ["Fail the command if the upload times outs"])
+    private var failOnTimeout: Boolean = true
+
+    @Option(hidden = true, names = ["--disable-notifications"], description = ["Do not send the notifications configured in config.yaml"])
+    private var disableNotifications = false
+
+    @Option(hidden = true, names = ["--timeout"], description = ["Minutes to wait until all flows complete"])
+    private var resultWaitTimeout = 60
+
     override fun call(): Int {
 
         validateFiles()
@@ -147,7 +156,8 @@ class CloudCommand : Callable<Int> {
         // Upload
         return CloudInteractor(
             client = ApiClient(apiUrl),
-            failOnTimeout = failOnCancellation,
+            failOnTimeout = failOnTimeout,
+            waitTimeoutMs = TimeUnit.MINUTES.toMillis(resultWaitTimeout.toLong())
         ).upload(
             async = async,
             flowFile = flowsFile,
@@ -169,7 +179,8 @@ class CloudCommand : Callable<Int> {
             reportFormat = format,
             reportOutput = output,
             failOnCancellation = failOnCancellation,
-            testSuiteName = testSuiteName
+            testSuiteName = testSuiteName,
+            disableNotifications = disableNotifications,
         )
     }
 

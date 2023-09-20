@@ -31,7 +31,9 @@ import maestro.cli.runner.resultview.AnsiResultView
 import maestro.cli.runner.resultview.PlainTextResultView
 import maestro.cli.session.MaestroSessionManager
 import maestro.cli.util.PrintUtils
+import maestro.orchestra.error.ValidationError
 import maestro.orchestra.util.Env.withInjectedShellEnvVars
+import maestro.orchestra.workspace.WorkspaceExecutionPlanner
 import maestro.orchestra.yaml.YamlCommandReader
 import okio.buffer
 import okio.sink
@@ -80,6 +82,12 @@ class TestCommand : Callable<Int> {
     private var output: File? = null
 
     @Option(
+        names = ["--debug-output"],
+        description = ["Configures the debug output in this path, instead of default"]
+    )
+    private var debugOutput: String? = null
+
+    @Option(
         names = ["--include-tags"],
         description = ["List of tags that will remove the Flows that does not have the provided tags"],
         split = ",",
@@ -106,15 +114,14 @@ class TestCommand : Callable<Int> {
     }
 
     override fun call(): Int {
-        if (!flowFile.exists()) {
-            throw CommandLine.ParameterException(
-                commandSpec.commandLine(),
-                "File not found: $flowFile"
-            )
-        }
-
         if (parent?.platform != null) {
             throw CliError("--platform option was deprecated. You can remove it to run your test.")
+        }
+
+        val executionPlan = try {
+            WorkspaceExecutionPlanner.plan(flowFile.toPath().toAbsolutePath(), includeTags, excludeTags)
+        } catch (e: ValidationError) {
+            throw CliError(e.message)
         }
 
         val deviceId =
@@ -122,6 +129,9 @@ class TestCommand : Callable<Int> {
             else parent?.deviceId
 
         env = env.withInjectedShellEnvVars()
+
+        TestDebugReporter.install(debugOutputPathAsString = debugOutput)
+        val debugOutputPath = TestDebugReporter.getDebugOutputPath()
         
         return MaestroSessionManager.newSession(parent?.host, parent?.port, deviceId) { session ->
             val maestro = session.maestro
@@ -139,19 +149,19 @@ class TestCommand : Callable<Int> {
                     maestro = maestro,
                     device = device,
                     reporter = ReporterFactory.buildReporter(format, testSuiteName),
-                    includeTags = includeTags,
-                    excludeTags = excludeTags,
                 ).runTestSuite(
-                    input = flowFile,
+                    executionPlan = executionPlan,
                     env = env,
                     reportOut = format.fileExtension
                         ?.let { extension ->
                             (output ?: File("report$extension"))
                                 .sink()
                                 .buffer()
-                        }
+                        },
+                    debugOutputPath = debugOutputPath
                 )
 
+                TestDebugReporter.deleteOldFiles()
                 if (suiteResult.passed) {
                     0
                 } else {
@@ -160,13 +170,15 @@ class TestCommand : Callable<Int> {
                 }
             } else {
                 if (continuous) {
+                    TestDebugReporter.deleteOldFiles()
                     TestRunner.runContinuous(maestro, device, flowFile, env)
                 } else {
                     val resultView = if (DisableAnsiMixin.ansiEnabled) AnsiResultView() else PlainTextResultView()
-                    val resultSingle = TestRunner.runSingle(maestro, device, flowFile, env, resultView)
+                    val resultSingle = TestRunner.runSingle(maestro, device, flowFile, env, resultView, debugOutputPath)
                     if (resultSingle == 1) {
                         printExitDebugMessage()
                     }
+                    TestDebugReporter.deleteOldFiles()
                     return@newSession resultSingle
                 }
             }
@@ -176,6 +188,6 @@ class TestCommand : Callable<Int> {
     private fun printExitDebugMessage() {
         println()
         println("==== Debug output (logs & screenshots) ====")
-        PrintUtils.message(TestDebugReporter.path.absolutePathString())
+        PrintUtils.message(TestDebugReporter.getDebugOutputPath().absolutePathString())
     }
 }

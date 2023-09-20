@@ -2,7 +2,6 @@ import FlyingFox
 import Foundation
 
 enum Route: String, CaseIterable {
-    case subTree
     case runningApp
     case swipe
     case swipeV2
@@ -16,6 +15,7 @@ enum Route: String, CaseIterable {
     case deviceInfo
     case setPermissions
     case viewHierarchy
+    case status
     
     func toHTTPRoute() -> HTTPRoute {
         return HTTPRoute(rawValue)

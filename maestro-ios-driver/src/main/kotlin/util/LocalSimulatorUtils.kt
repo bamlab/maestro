@@ -3,17 +3,23 @@ package util
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import maestro.utils.MaestroTimer
+import org.apache.commons.io.FileUtils
 import org.rauschig.jarchivelib.ArchiveFormat
 import org.rauschig.jarchivelib.ArchiverFactory
 import util.CommandLineUtils.runCommand
 import java.io.File
 import java.io.InputStream
 import java.lang.ProcessBuilder.Redirect.PIPE
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
+import kotlin.io.path.absolutePathString
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.name
 
 object LocalSimulatorUtils {
 
     data class SimctlError(override val message: String): Throwable(message)
+
     private val homedir = System.getProperty("user.home")
 
     fun list(): SimctlList {
@@ -25,8 +31,8 @@ object LocalSimulatorUtils {
         return jacksonObjectMapper().readValue(json)
     }
 
-    fun awaitLaunch(deviceId: String) {
-        MaestroTimer.withTimeout(30000) {
+    fun awaitLaunch(deviceId: String, timeout: Long= 30000) {
+        MaestroTimer.withTimeout(timeout) {
             if (list()
                     .devices
                     .values
@@ -56,7 +62,7 @@ object LocalSimulatorUtils {
         return process.inputStream.bufferedReader().readLine()
     }
 
-    fun launchSimulator(deviceId: String) {
+    fun bootSimulator(deviceId: String) {
         runCommand(
             listOf(
                 "xcrun",
@@ -65,7 +71,8 @@ object LocalSimulatorUtils {
                 deviceId
             )
         )
-
+    }
+    fun launchSimulator(deviceId: String) {
         val simulatorPath = "${xcodePath()}/Applications/Simulator.app"
         var exceptionToThrow: Exception? = null
 
@@ -259,6 +266,18 @@ object LocalSimulatorUtils {
                 "uninstall",
                 deviceId,
                 bundleId
+            )
+        )
+    }
+
+    fun addMedia(deviceId: String, path: String) {
+        runCommand(
+            listOf(
+                "xcrun",
+                "simctl",
+                "addmedia",
+                deviceId,
+                path
             )
         )
     }

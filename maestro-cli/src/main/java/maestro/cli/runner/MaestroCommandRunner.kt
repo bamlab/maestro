@@ -35,6 +35,7 @@ import maestro.orchestra.MaestroConfig
 import maestro.orchestra.Orchestra
 import maestro.orchestra.OrchestraAppState
 import maestro.orchestra.yaml.YamlCommandReader
+import maestro.utils.Insight
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.IdentityHashMap
@@ -48,7 +49,6 @@ object MaestroCommandRunner {
         device: Device?,
         view: ResultView,
         commands: List<MaestroCommand>,
-        cachedAppState: OrchestraAppState?,
         debug: FlowDebugMetadata
     ): Result {
         val config = YamlCommandReader.getConfig(commands)
@@ -74,7 +74,7 @@ object MaestroCommandRunner {
             val result = kotlin.runCatching {
                 val out = File.createTempFile("screenshot-${System.currentTimeMillis()}", ".png")
                     .also { it.deleteOnExit() } // save to another dir before exiting
-                maestro.takeScreenshot(out)
+                maestro.takeScreenshot(out, false)
                 debugScreenshots.add(
                     ScreenshotDebugMetadata(
                         screenshot = out,
@@ -182,19 +182,9 @@ object MaestroCommandRunner {
             },
         )
 
-        // TODO: deprecate initFlow
-        val cachedState = if (cachedAppState == null) {
-            initFlow?.let {
-                orchestra.runInitFlow(it) ?: return Result(flowSuccess = false, cachedAppState = null)
-            }
-        } else {
-            initFlow?.commands?.forEach { commandStatuses[it] = CommandStatus.COMPLETED }
-            cachedAppState
-        }
+        val flowSuccess = orchestra.runFlow(commands)
 
-        val flowSuccess = orchestra.runFlow(commands, cachedState)
-
-        return Result(flowSuccess = flowSuccess, cachedAppState = cachedState)
+        return Result(flowSuccess = flowSuccess, cachedAppState = null)
     }
 
     private fun toCommandStates(
@@ -222,6 +212,7 @@ object MaestroCommandRunner {
                         ?.subCommands()
                         ?.let { toCommandStates(it, commandStatuses, commandMetadata) },
                     logMessages = commandMetadata[command]?.logMessages ?: emptyList(),
+                    insight = commandMetadata[command]?.insight ?: Insight("", Insight.Level.NONE)
                 )
             }
     }

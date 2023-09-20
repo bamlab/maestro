@@ -1,24 +1,37 @@
+import { ForwardRefRenderFunction, KeyboardEvent, forwardRef } from "react";
 import { InputHint, InputWrapper, TextArea } from "../design-system/input";
 import { TextAreaProps } from "../../helpers/models";
 import { twMerge } from "tailwind-merge";
 import clsx from "clsx";
 
-const CommandInput = ({
-  value,
-  setValue,
-  error,
-  resize = "automatic",
-  onSubmit,
-  className,
-  ...rest
-}: {
+interface CommandInputProps {
   value: string;
   setValue: (value: string) => void;
   resize?: "automatic" | "vertical" | "none";
   error?: boolean | string | null;
   onSubmit?: () => void;
-} & TextAreaProps) => {
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+}
+
+type CombinedProps = CommandInputProps &
+  TextAreaProps &
+  React.RefAttributes<HTMLTextAreaElement>;
+
+const CommandInput: ForwardRefRenderFunction<
+  HTMLTextAreaElement,
+  CombinedProps
+> = (
+  {
+    value,
+    setValue,
+    error,
+    resize = "automatic",
+    onSubmit,
+    className,
+    ...rest
+  },
+  ref
+) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.metaKey && e.key === "Enter") {
       onSubmit && onSubmit();
       return;
@@ -36,15 +49,19 @@ const CommandInput = ({
   return (
     <InputWrapper error={error}>
       <TextArea
+        ref={ref}
+        id="commandInputBox"
         value={value}
         rows={2}
-        resize={resize}
-        showResizeIcon={false}
         onChange={(e) => {
           setValue(e.target.value);
         }}
+        resize={resize}
+        showResizeIcon={false}
         onKeyDown={handleKeyDown}
-        className={twMerge(clsx("font-mono font-normal", className))}
+        textAreaClassName={twMerge(
+          clsx("font-mono font-normal pb-12", className)
+        )}
         {...rest}
       />
       <InputHint />
@@ -52,4 +69,4 @@ const CommandInput = ({
   );
 };
 
-export default CommandInput;
+export default forwardRef(CommandInput);

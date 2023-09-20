@@ -21,19 +21,10 @@ package maestro.test.drivers
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.google.common.truth.Truth.assertThat
-import maestro.Capability
-import maestro.DeviceInfo
-import maestro.Driver
-import maestro.KeyCode
-import maestro.MaestroException
-import maestro.Platform
-import maestro.Point
-import maestro.ScreenRecording
-import maestro.SwipeDirection
-import maestro.TreeNode
-import maestro.ViewHierarchy
+import maestro.*
 import maestro.utils.ScreenshotUtils
 import okio.Sink
+import okio.Source
 import okio.buffer
 import java.awt.image.BufferedImage
 import java.io.File
@@ -46,7 +37,6 @@ class FakeDriver : Driver {
     private var layout: FakeLayoutElement = FakeLayoutElement()
     private var installedApps = mutableSetOf<String>()
 
-    private var pushedState: String? = null
     private val events = mutableListOf<Event>()
 
     private var copiedText: String? = null
@@ -126,23 +116,6 @@ class FakeDriver : Driver {
         ensureOpen()
 
         events.add(Event.ClearKeychain)
-    }
-
-    override fun pullAppState(appId: String, outFile: File) {
-        ensureOpen()
-
-        val userInteractions = events.filterIsInstance<UserInteraction>()
-        outFile.writeBytes(MAPPER.writeValueAsBytes(userInteractions))
-
-        events.add(Event.PullAppState(appId, outFile))
-    }
-
-    override fun pushAppState(appId: String, stateFile: File) {
-        ensureOpen()
-
-        pushedState = stateFile.readText()
-
-        events.add(Event.PushAppState(appId, stateFile))
     }
 
     override fun tap(point: Point) {
@@ -360,13 +333,6 @@ class FakeDriver : Driver {
         }
     }
 
-    fun assertPushedAppState(expected: List<UserInteraction>) {
-        val expectedJson = MAPPER.writeValueAsString(expected)
-
-        assertThat(pushedState).isNotNull()
-        assertThat(pushedState!!).isEqualTo(expectedJson)
-    }
-
     fun assertCurrentTextInput(expected: String) {
         assertThat(currentText).isEqualTo(expected)
     }
@@ -395,6 +361,12 @@ class FakeDriver : Driver {
         ensureOpen()
 
         events.add(Event.SetPermissions(appId, permissions))
+    }
+
+    override fun addMedia(mediaFiles: List<File>) {
+        ensureOpen()
+
+        mediaFiles.forEach { _ -> events.add(Event.AddMedia) }
     }
 
     sealed class Event {
@@ -444,16 +416,6 @@ class FakeDriver : Driver {
             val appId: String
         ) : Event()
 
-        data class PullAppState(
-            val appId: String,
-            val outFile: File,
-        ) : Event()
-
-        data class PushAppState(
-            val appId: String,
-            val stateFile: File,
-        ) : Event()
-
         data class OpenLink(
             val link: String,
             val autoLink: Boolean = false
@@ -489,6 +451,8 @@ class FakeDriver : Driver {
             val appId: String,
             val permissions: Map<String, String>,
         ) : Event()
+
+        object AddMedia : Event()
 
         object StartRecording : Event()
 

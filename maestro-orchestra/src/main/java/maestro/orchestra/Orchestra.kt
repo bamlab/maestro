@@ -37,6 +37,8 @@ import maestro.orchestra.geo.Traveller
 import maestro.orchestra.util.Env.evaluateScripts
 import maestro.orchestra.yaml.YamlCommandReader
 import maestro.toSwipeDirection
+import maestro.utils.Insight
+import maestro.utils.Insights
 import maestro.utils.MaestroTimer
 import maestro.utils.StringUtils.toRegexSafe
 import okhttp3.OkHttpClient
@@ -45,6 +47,7 @@ import okio.sink
 import java.io.File
 import java.lang.Long.max
 import java.nio.file.Files
+import java.nio.file.Path
 
 class Orchestra(
     private val maestro: Maestro,
@@ -93,7 +96,6 @@ class Orchestra(
 
         if (state != null) {
             maestro.clearAppState(state.appId)
-            maestro.pushAppState(state.appId, state.file)
         }
 
         onFlowStart(commands)
@@ -102,35 +104,41 @@ class Orchestra(
         // filter out DefineVariablesCommand to not execute it twice
         val filteredCommands = commands.filter { it.asCommand() !is DefineVariablesCommand }
 
-        config?.onFlowStart?.commands?.let {
-            executeCommands(
-                commands = it,
-                config = config,
-                shouldReinitJsEngine = false,
-            )
-        }
-
+        var flowSuccess = false
+        var exception: Throwable? = null
         try {
-            val flowSuccess = executeCommands(
-                commands = filteredCommands,
-                config = config,
-                shouldReinitJsEngine = false,
-            ).also {
-                // close existing screen recording, if left open.
-                screenRecording?.close()
-            }
-
-            return flowSuccess
-        } catch (e: Throwable) {
-            throw e
-        } finally {
-            config?.onFlowComplete?.commands?.let {
+            val onStartSuccess = config?.onFlowStart?.commands?.let {
                 executeCommands(
                     commands = it,
                     config = config,
                     shouldReinitJsEngine = false,
                 )
+            } ?: true
+
+            if (onStartSuccess) {
+                flowSuccess = executeCommands(
+                    commands = filteredCommands,
+                    config = config,
+                    shouldReinitJsEngine = false,
+                ).also {
+                    // close existing screen recording, if left open.
+                    screenRecording?.close()
+                }
             }
+        } catch (e: Throwable) {
+            exception = e
+        } finally {
+            val onCompleteSuccess = config?.onFlowComplete?.commands?.let {
+                executeCommands(
+                    commands = it,
+                    config = config,
+                    shouldReinitJsEngine = false,
+                )
+            } ?: true
+
+            exception?.let { throw it }
+
+            return onCompleteSuccess && flowSuccess
         }
     }
 
@@ -143,7 +151,6 @@ class Orchestra(
     ): OrchestraAppState? {
         val success = runFlow(
             initFlow.commands,
-            initState = null,
         )
         if (!success) return null
 
@@ -154,7 +161,6 @@ class Orchestra(
         } else {
             Files.createTempFile(stateDir.toPath(), null, ".state")
         }
-        maestro.pullAppState(initFlow.appId, stateFile.toFile())
 
         return OrchestraAppState(
             appId = initFlow.appId,
@@ -190,6 +196,15 @@ class Orchestra(
                     )
                 updateMetadata(command, metadata)
 
+                val callback: (Insight) -> Unit = { insight ->
+                    updateMetadata(
+                        command,
+                        getMetadata(command).copy(
+                            insight = insight
+                        )
+                    )
+                }
+                Insights.onInsightsUpdated(callback)
                 try {
                     executeCommand(evaluatedCommand, config)
                     onCommandComplete(index, command)
@@ -205,6 +220,7 @@ class Orchestra(
                         }
                     }
                 }
+                Insights.unregisterListener(callback)
             }
         return true
     }
@@ -267,6 +283,7 @@ class Orchestra(
             is TravelCommand -> travelCommand(command)
             is StartRecordingCommand -> startRecordingCommand(command)
             is StopRecordingCommand -> stopRecordingCommand()
+            is AddMediaCommand -> addMediaCommand(command.mediaPaths)
             else -> true
         }.also { mutating ->
             if (mutating) {
@@ -282,6 +299,11 @@ class Orchestra(
             speedMPS = command.speedMPS ?: 4.0,
         )
 
+        return true
+    }
+
+    private fun addMediaCommand(mediaPaths: List<String>): Boolean {
+        maestro.addMedia(mediaPaths)
         return true
     }
 
@@ -579,16 +601,26 @@ class Orchestra(
         // filter out DefineVariablesCommand to not execute it twice
         val filteredCommands = commands.filter { it.asCommand() !is DefineVariablesCommand }
 
-        subflowConfig?.onFlowStart?.commands?.let {
-            executeSubflowCommands(it, config)
-        }
-
+        var exception: Throwable? = null
+        var flowSuccess = false
         try {
-            return executeSubflowCommands(filteredCommands, config)
-        } finally {
-            subflowConfig?.onFlowComplete?.commands?.let {
+            val onStartSuccess = subflowConfig?.onFlowStart?.commands?.let {
                 executeSubflowCommands(it, config)
+            } ?: true
+
+            if (onStartSuccess) {
+                flowSuccess = executeSubflowCommands(filteredCommands, config)
             }
+        } catch (e: Throwable) {
+            exception = e
+        } finally {
+            val onCompleteSuccess = subflowConfig?.onFlowComplete?.commands?.let {
+                executeSubflowCommands(it, config)
+            } ?: true
+
+            exception?.let { throw it }
+
+            return onCompleteSuccess && flowSuccess
         }
     }
 
@@ -598,7 +630,7 @@ class Orchestra(
             ?.let { File(it, pathStr) }
             ?: File(pathStr)
 
-        maestro.takeScreenshot(file)
+        maestro.takeScreenshot(file, false)
 
         return false
     }
@@ -1021,7 +1053,8 @@ class Orchestra(
     data class CommandMetadata(
         val numberOfRuns: Int? = null,
         val evaluatedCommand: MaestroCommand? = null,
-        val logMessages: List<String> = emptyList()
+        val logMessages: List<String> = emptyList(),
+        val insight: Insight = Insight("", Insight.Level.NONE),
     )
 
     enum class ErrorResolution {
@@ -1034,7 +1067,6 @@ class Orchestra(
         val REGEX_OPTIONS = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL, RegexOption.MULTILINE)
 
         private const val MAX_ERASE_CHARACTERS = 50
-        private const val MAX_LAUNCH_ARGUMENT_PAIRS_ALLOWED = 1
     }
 }
 

@@ -29,9 +29,11 @@ import maestro.utils.SocketUtils
 import okio.Sink
 import okio.buffer
 import okio.sink
+import okio.source
 import org.slf4j.LoggerFactory
 import java.awt.image.BufferedImage
 import java.io.File
+import java.nio.file.Path
 import java.util.UUID
 import kotlin.system.measureTimeMillis
 
@@ -93,18 +95,6 @@ class Maestro(private val driver: Driver) : AutoCloseable {
         LOGGER.info("Clearing keychain")
 
         driver.clearKeychain()
-    }
-
-    fun pullAppState(appId: String, outFile: File) {
-        LOGGER.info("Pulling app state: $appId")
-
-        driver.pullAppState(appId, outFile)
-    }
-
-    fun pushAppState(appId: String, stateFile: File) {
-        LOGGER.info("Pushing app state: $appId")
-
-        driver.pushAppState(appId, stateFile)
     }
 
     fun backPress() {
@@ -470,11 +460,16 @@ class Maestro(private val driver: Driver) : AutoCloseable {
         waitForAppToSettle()
     }
 
+    fun addMedia(fileNames: List<String>) {
+        val mediaFiles = fileNames.map { File(it) }
+        driver.addMedia(mediaFiles)
+    }
+
     override fun close() {
         driver.close()
     }
 
-    fun takeScreenshot(outFile: File) {
+    fun takeScreenshot(outFile: File, compressed: Boolean) {
         LOGGER.info("Taking screenshot: $outFile")
 
         val absoluteOutFile = outFile.absoluteFile
@@ -484,7 +479,7 @@ class Maestro(private val driver: Driver) : AutoCloseable {
                 .sink()
                 .buffer()
                 .use {
-                    ScreenshotUtils.takeScreenshot(it, false, driver)
+                    ScreenshotUtils.takeScreenshot(it, compressed, driver)
                 }
         } else {
             throw MaestroException.DestinationIsNotWritable(

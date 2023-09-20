@@ -4,8 +4,6 @@ import FlyingFox
 class RouteHandlerFactory {
     @MainActor class func createRouteHandler(route: Route) -> HTTPHandler {
         switch route {
-        case .subTree:
-            return SubTreeRouteHandler()
         case .runningApp:
             return RunningAppRouteHandler()
         case .swipe:
@@ -32,6 +30,8 @@ class RouteHandlerFactory {
             return SetPermissionsHandler()
         case .viewHierarchy:
             return ViewHierarchyHandler()
+        case .status:
+            return StatusHandler()
         }
     }
 }

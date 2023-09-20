@@ -1,5 +1,8 @@
 package maestro.test
 
+import com.github.tomakehurst.wiremock.client.WireMock
+import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo
+import com.google.common.net.HttpHeaders
 import com.google.common.truth.Truth.assertThat
 import maestro.js.RhinoJsEngine
 import org.junit.jupiter.api.BeforeEach

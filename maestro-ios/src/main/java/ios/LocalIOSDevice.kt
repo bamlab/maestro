@@ -1,56 +1,63 @@
 package ios
 
 import com.github.michaelbull.result.*
-import hierarchy.AXElement
-import hierarchy.XCUIElement
-import ios.device.DeviceInfo
-import ios.idb.IdbIOSDevice
+import xcuitest.api.DeviceInfo
 import ios.simctl.SimctlIOSDevice
 import ios.xctest.XCTestIOSDevice
 import okio.Sink
-import java.io.File
 import java.io.InputStream
 import java.util.UUID
 import hierarchy.ViewHierarchy
+import maestro.utils.Insight
+import maestro.utils.Insights
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class LocalIOSDevice(
     override val deviceId: String?,
-    private val idbIOSDevice: IdbIOSDevice,
     private val xcTestDevice: XCTestIOSDevice,
     private val simctlIOSDevice: SimctlIOSDevice,
 ) : IOSDevice {
 
+    private val executor by lazy { Executors.newSingleThreadScheduledExecutor() }
+
     override fun open() {
-        idbIOSDevice.open()
         xcTestDevice.open()
     }
 
-    override fun deviceInfo(): Result<DeviceInfo, Throwable> {
+    override fun deviceInfo(): DeviceInfo {
         return xcTestDevice.deviceInfo()
     }
 
-    override fun contentDescriptor(): Result<XCUIElement, Throwable> {
-        return xcTestDevice.contentDescriptor()
-            .recoverIf(
-                { it is XCTestIOSDevice.IllegalArgumentSnapshotFailure },
-                {
-                    idbIOSDevice.contentDescriptor()
-                        .getOrThrow()
+    override fun viewHierarchy(): ViewHierarchy {
+        var isViewHierarchyInProgress = true
+        val future = executor.schedule(
+            {
+                if (isViewHierarchyInProgress) {
+                    Insights.report(
+                        Insight(
+                            message = "Retrieving the hierarchy is taking longer than usual. This might be due to a " +
+                                    "deep hierarchy in the current view. Please wait a bit more to complete the operation.",
+                            level = Insight.Level.WARNING,
+                        )
+                    )
                 }
-            )
-
+            }, 15, TimeUnit.SECONDS
+        )
+        val result = xcTestDevice.viewHierarchy()
+        isViewHierarchyInProgress = false
+        if (!future.isDone) {
+            future.cancel(false)
+        }
+        return result
     }
 
-    override fun viewHierarchy(): Result<ViewHierarchy, Throwable> {
-        return xcTestDevice.viewHierarchy()
-    }
-
-    override fun tap(x: Int, y: Int): Result<Unit, Throwable> {
+    override fun tap(x: Int, y: Int) {
         return xcTestDevice.tap(x, y)
     }
 
-    override fun longPress(x: Int, y: Int, durationMs: Long): Result<Unit, Throwable> {
-        return xcTestDevice.longPress(x, y, durationMs)
+    override fun longPress(x: Int, y: Int, durationMs: Long) {
+        xcTestDevice.longPress(x, y, durationMs)
     }
 
     override fun pressKey(name: String) {
@@ -67,12 +74,12 @@ class LocalIOSDevice(
         xEnd: Double,
         yEnd: Double,
         duration: Double
-    ): Result<Unit, Throwable> {
-        return xcTestDevice.scrollV2(xStart, yStart, xEnd, yEnd, duration)
+    ) {
+        xcTestDevice.scrollV2(xStart, yStart, xEnd, yEnd, duration)
     }
 
-    override fun input(text: String): Result<Unit, Throwable> {
-        return xcTestDevice.input(text)
+    override fun input(text: String) {
+        xcTestDevice.input(text)
     }
 
     override fun install(stream: InputStream): Result<Unit, Throwable> {
@@ -81,14 +88,6 @@ class LocalIOSDevice(
 
     override fun uninstall(id: String): Result<Unit, Throwable> {
         return simctlIOSDevice.uninstall(id)
-    }
-
-    override fun pullAppState(id: String, file: File): Result<Unit, Throwable> {
-        return idbIOSDevice.pullAppState(id, file)
-    }
-
-    override fun pushAppState(id: String, file: File): Result<Unit, Throwable> {
-        return idbIOSDevice.pushAppState(id, file)
     }
 
     override fun clearAppState(id: String): Result<Unit, Throwable> {
@@ -115,8 +114,8 @@ class LocalIOSDevice(
         return simctlIOSDevice.openLink(link)
     }
 
-    override fun takeScreenshot(out: Sink, compressed: Boolean): Result<Unit, Throwable> {
-        return xcTestDevice.takeScreenshot(out, compressed)
+    override fun takeScreenshot(out: Sink, compressed: Boolean) {
+        xcTestDevice.takeScreenshot(out, compressed)
     }
 
     override fun startScreenRecording(out: Sink): Result<IOSScreenRecording, Throwable> {
@@ -128,27 +127,28 @@ class LocalIOSDevice(
     }
 
     override fun isShutdown(): Boolean {
-        return idbIOSDevice.isShutdown() && xcTestDevice.isShutdown()
+        return xcTestDevice.isShutdown()
     }
 
     override fun close() {
-        idbIOSDevice.close()
         xcTestDevice.close()
         simctlIOSDevice.close()
     }
 
-    override fun isScreenStatic(): Result<Boolean, Throwable> {
+    override fun isScreenStatic(): Boolean {
         return xcTestDevice.isScreenStatic()
     }
 
-    override fun setPermissions(id: String, permissions: Map<String, String>): Result<Unit, Throwable> {
-        return runCatching {
-            simctlIOSDevice.setPermissions(id, permissions).expect {  }
-            xcTestDevice.setPermissions(id, permissions).expect {  }
-        }
+    override fun setPermissions(id: String, permissions: Map<String, String>) {
+        simctlIOSDevice.setPermissions(id, permissions)
+        xcTestDevice.setPermissions(id, permissions)
     }
 
     override fun eraseText(charactersToErase: Int) {
         xcTestDevice.eraseText(charactersToErase)
+    }
+
+    override fun addMedia(path: String) {
+        simctlIOSDevice.addMedia(path)
     }
 }

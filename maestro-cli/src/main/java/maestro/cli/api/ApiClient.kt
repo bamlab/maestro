@@ -33,6 +33,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.exists
+import kotlin.io.use
 
 class ApiClient(
     private val baseUrl: String,
@@ -61,6 +62,15 @@ class ApiClient(
             body = mapOf(
                 "exception" to exception,
                 "commandLine" to commandLine
+            )
+        )
+    }
+
+    fun sendScreenReport(maxDepth: Int) {
+        post<Unit>(
+            path = "/maestro/screen",
+            body = mapOf(
+                "maxDepth" to maxDepth
             )
         )
     }
@@ -233,6 +243,7 @@ class ApiClient(
         excludeTags: List<String> = emptyList(),
         maxRetryCount: Int = 3,
         completedRetries: Int = 0,
+        disableNotifications: Boolean,
         progressListener: (totalBytes: Long, bytesWritten: Long) -> Unit = { _, _ -> },
     ): UploadResponse {
         if (appBinaryId == null && appFile == null) throw CliError("Missing required parameter for option '--app-file' or '--app-binary-id'")
@@ -255,6 +266,7 @@ class ApiClient(
         appBinaryId?.let { requestPart["appBinaryId"] = it }
         if (includeTags.isNotEmpty()) requestPart["includeTags"] = includeTags
         if (excludeTags.isNotEmpty()) requestPart["excludeTags"] = excludeTags
+        if (disableNotifications) requestPart["disableNotifications"] = true
 
         val bodyBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
@@ -298,7 +310,8 @@ class ApiClient(
                 maxRetryCount = maxRetryCount,
                 completedRetries = completedRetries + 1,
                 progressListener = progressListener,
-                appBinaryId = appBinaryId
+                appBinaryId = appBinaryId,
+                disableNotifications = disableNotifications,
             )
         }
 
@@ -316,10 +329,12 @@ class ApiClient(
 
         response.use {
             if (!response.isSuccessful) {
+                val errorMessage = response.body?.string().takeIf { it?.isNotEmpty() == true } ?: "Unknown"
+
                 if (response.code >= 500) {
-                    return retry("Upload failed with status code ${response.code}")
+                    return retry("Upload failed with status code ${response.code}: $errorMessage")
                 } else {
-                    throw CliError("Upload request failed (${response.code}): ${response.body?.string()}")
+                    throw CliError("Upload request failed (${response.code}): $errorMessage")
                 }
             }
 
@@ -331,10 +346,20 @@ class ApiClient(
             val teamId = analysisRequest["teamId"] as String
             val appId = responseBody["targetId"] as String
             val appBinaryIdResponse = responseBody["appBinaryId"] as? String
+            val deviceInfoStr = responseBody["deviceInfo"] as? Map<String, Any>
 
-            return UploadResponse(teamId, appId, uploadId, appBinaryIdResponse)
+            val deviceInfo = deviceInfoStr?.let {
+                DeviceInfo(
+                    platform = it["platform"] as String,
+                    displayInfo = it["displayInfo"] as String,
+                    isDefaultOsVersion = it["isDefaultOsVersion"] as Boolean
+                )
+            }
+
+            return UploadResponse(teamId, appId, uploadId, appBinaryIdResponse, deviceInfo)
         }
     }
+
 
     private inline fun <reified T> post(path: String, body: Any): Result<T, Response> {
         val bodyBytes = JSON.writeValueAsBytes(body)
@@ -390,7 +415,15 @@ data class UploadResponse(
     val teamId: String,
     val appId: String,
     val uploadId: String,
-    val appBinaryId: String?
+    val appBinaryId: String?,
+    val deviceInfo: DeviceInfo?
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class DeviceInfo(
+    val platform: String,
+    val displayInfo: String,
+    val isDefaultOsVersion: Boolean
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -405,6 +438,7 @@ data class UploadStatus(
         val name: String,
         val status: Status,
         val errors: List<String>,
+        val cancellationReason: CancellationReason? = null
     )
 
     enum class Status {
@@ -414,6 +448,13 @@ data class UploadStatus(
         ERROR,
         CANCELED,
         WARNING,
+    }
+
+    enum class CancellationReason {
+        BENCHMARK_DEPENDENCY_FAILED,
+        INFRA_ERROR,
+        OVERLAPPING_BENCHMARK,
+        TIMEOUT
     }
 }
 
